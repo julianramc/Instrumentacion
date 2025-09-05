@@ -196,34 +196,24 @@ def calculate_orifice_flow(dp, k):
     flow = k * math.sqrt(dp)
     return round(flow, 2), None
 
+
 def find_suitable_instruments(measurement_value, variable_type, accuracy_required):
-    """Filtra instrumentos basados en el valor a medir, variable y requisito de exactitud."""
+    """Devuelve instrumentos cuyo rango incluye el valor a medir. Marca si están en campo óptimo."""
     suitable_instruments = {}
     for tag, specs in INSTRUMENT_DATABASE.items():
         if variable_type.lower() in specs['variable'].lower():
-            # Regex mejorado para capturar números negativos y decimales.
             range_match = re.search(r'(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)', specs['rango_tipico'])
             if range_match:
                 try:
                     min_range = float(range_match.group(1))
                     max_range = float(range_match.group(2))
-                    
-                    if max_range <= min_range: continue
-
-                    is_suitable = False
-                    if accuracy_required:
-                        # Para exactitud, el valor debe estar en el campo de medida (25% a 75% del span).
-                        span = max_range - min_range
-                        lower_bound = min_range + 0.25 * span
-                        upper_bound = min_range + 0.75 * span
-                        if lower_bound <= measurement_value <= upper_bound:
-                            is_suitable = True
-                    else:
-                        # Sin exactitud, el valor solo debe estar dentro del rango de indicación.
-                        if min_range <= measurement_value <= max_range:
-                            is_suitable = True
-                    
-                    if is_suitable:
+                    if max_range <= min_range:
+                        continue
+                    span = max_range - min_range
+                    in_range = min_range <= measurement_value <= max_range
+                    in_optimal = (min_range + 0.25 * span) <= measurement_value <= (min_range + 0.75 * span)
+                    if in_range:
+                        specs['campo_optimo'] = in_optimal
                         suitable_instruments[tag] = specs
                 except (ValueError, IndexError):
                     continue
@@ -445,7 +435,7 @@ with tab3:
     if question_state_key not in st.session_state: st.session_state[question_state_key] = generator_func()
     question, options, correct_answer = st.session_state[question_state_key]
     random.shuffle(options)
-    user_answer = st.radio(f"**Problema:** {question}", options, key=f"{quiz_key_prefix}_{st.session_state.quiz_id}")
+    user_answer = st.radio(f"**Problema:** {question}", options, key=f"{quiz_key_prefix}_question_{st.session_state.quiz_id}")
     col_btn1, col_btn2, _ = st.columns([1,1,2])
     if col_btn1.button("✅ Verificar Respuesta", key=f"verify_{quiz_key_prefix}"):
         st.session_state.quiz_stats['total'] += 1
@@ -515,7 +505,7 @@ with tab5:
         st.warning("No se encontraron instrumentos en la base de datos que cumplan con los criterios especificados. Pruebe ajustar el 'Valor a Medir' o desactive la opción de 'Alta Exactitud'.")
     else:
         # Formatear las opciones para que el usuario vea el rango y seleccione fácilmente
-        opciones_formateadas = [f"{tag}  |  Rango: {specs['rango_tipico']}" for tag, specs in instrumentos_compatibles.items()]
+        opciones_formateadas = [f"{tag}  |  Rango: {specs['rango_tipico']}  |  {"✅ Óptimo" if specs.get("campo_optimo") else "⚠️ No Óptimo"}" for tag, specs in instrumentos_compatibles.items()]
         seleccion_formateada = st.selectbox("Instrumentos Sugeridos:", opciones_formateadas)
         
         # Extraer el TAG del instrumento de la opción seleccionada
