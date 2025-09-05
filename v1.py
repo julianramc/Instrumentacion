@@ -654,79 +654,148 @@ with tab4:
             st.metric(f"Resultado en {press_to}", f"{result:.4f}")
 
 with tab5:
-    st.header("⚠️ Análisis de Errores de Instrumentación")
-    st.info("Calcula los diferentes tipos de error (A, B, C, D) para instrumentos de medición según las especificaciones del fabricante.")
+    st.header("⚠️ Análisis Guiado de Errores de Instrumentación")
+    st.info("Selecciona o define un instrumento personalizado para calcular los diferentes tipos de error (A, B, C, D) según las especificaciones del fabricante.")
     
-    with st.expander("**🎯 Calculadora de Errores por Tipo**", expanded=True):
+    with st.expander("**🎯 Análisis Guiado de Errores**", expanded=True):
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("Selección de Instrumento")
-            selected_instrument = st.selectbox("Instrumento:", list(INSTRUMENT_DATABASE.keys()))
-            measurement_val = st.number_input("Valor a Medir:", value=50.0, format="%.2f")
+            st.subheader("Configuración del Instrumento")
             
-            if selected_instrument in INSTRUMENT_DATABASE:
-                specs = INSTRUMENT_DATABASE[selected_instrument]
-                st.write(f"**Variable:** {specs['variable']}")
-                st.write(f"**Función:** {specs['funcion']}")
-                st.write(f"**Rango:** {specs['rango_tipico']}")
-                st.write(f"**Exactitud Típica:** {specs['exactitud_tipica']}")
+            instrument_source = st.radio("Fuente del instrumento:", 
+                                       ["Base de datos", "Instrumento personalizado"], 
+                                       horizontal=True)
+            
+            if instrument_source == "Base de datos":
+                selected_instrument = st.selectbox("Instrumento de la base de datos:", 
+                                                 list(INSTRUMENT_DATABASE.keys()))
+                if selected_instrument in INSTRUMENT_DATABASE:
+                    specs = INSTRUMENT_DATABASE[selected_instrument]
+                    st.write(f"**Variable:** {specs['variable']}")
+                    st.write(f"**Función:** {specs['funcion']}")
+                    
+                    range_match = re.search(r'(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)', specs['rango_tipico'])
+                    if range_match:
+                        default_min, default_max = float(range_match.group(1)), float(range_match.group(2))
+                    else:
+                        default_min, default_max = 0.0, 100.0
+                    
+                    st.subheader("Campo de Indicación (Editable)")
+                    min_range = st.number_input("Valor mínimo del campo:", value=default_min, format="%.2f")
+                    max_range = st.number_input("Valor máximo del campo:", value=default_max, format="%.2f")
+                    
+                    if max_range > min_range:
+                        span = max_range - min_range
+                        st.metric("📏 Span del Instrumento", f"{span:.2f}", 
+                                help="Span = Valor máximo - Valor mínimo del campo de indicación")
+                        optimal_point = min_range + (span * 0.5)
+                        st.info(f"🎯 **Punto óptimo para máxima exactitud:** {optimal_point:.2f} (50% del campo)")
+                    else:
+                        st.error("El valor máximo debe ser mayor que el mínimo")
+                        
+            else:  # Instrumento personalizado
+                st.subheader("Definir Instrumento Personalizado")
+                custom_variable = st.text_input("Variable medida:", "Presión")
+                custom_function = st.text_input("Función del instrumento:", "Transmisor")
+                custom_units = st.text_input("Unidades:", "bar")
+                
+                st.subheader("Campo de Indicación")
+                min_range = st.number_input("Valor mínimo del campo:", value=0.0, format="%.2f")
+                max_range = st.number_input("Valor máximo del campo:", value=100.0, format="%.2f")
+                
+                if max_range > min_range:
+                    span = max_range - min_range
+                    st.metric("📏 Span del Instrumento", f"{span:.2f} {custom_units}", 
+                            help="Span = Valor máximo - Valor mínimo del campo de indicación")
+                    optimal_point = min_range + (span * 0.5)
+                    st.info(f"🎯 **Punto óptimo para máxima exactitud:** {optimal_point:.2f} {custom_units} (50% del campo)")
+                else:
+                    st.error("El valor máximo debe ser mayor que el mínimo")
+            
+            measurement_val = st.number_input("Valor a medir:", value=50.0, format="%.2f")
+            
+            if max_range > min_range:
+                measurement_percentage = ((measurement_val - min_range) / span) * 100
+                if 40 <= measurement_percentage <= 60:
+                    st.success(f"✅ Medición con exactitud: {measurement_percentage:.1f}% del campo (cerca del 50% óptimo)")
+                else:
+                    st.warning(f"⚠️ Medición sin exactitud óptima: {measurement_percentage:.1f}% del campo (alejado del 50% óptimo)")
         
         with col2:
-            st.subheader("Porcentajes de Error")
-            st.write("*Configure los porcentajes según especificaciones del fabricante:*")
+            st.subheader("Especificaciones de Error del Fabricante")
+            st.write("*Configure los porcentajes según las especificaciones del fabricante:*")
             
-            error_a = st.number_input("Error Tipo A (% del máximo del rango):", value=0.5, format="%.2f", help="Porcentaje del valor máximo del campo de indicación")
-            error_b = st.number_input("Error Tipo B (% del span):", value=0.25, format="%.2f", help="Porcentaje del span (rango completo)")
-            error_c = st.number_input("Error Tipo C (% del valor medido):", value=1.0, format="%.2f", help="Porcentaje del valor que se está midiendo")
-            error_d = st.number_input("Error Tipo D (valor fijo):", value=0.1, format="%.3f", help="Valor fijo según la variable (°C, bar, etc.)")
+            error_a = st.number_input("Error Tipo A (% del máximo del campo):", value=0.5, format="%.3f", 
+                                    help="Porcentaje del valor máximo del campo de indicación")
+            error_b = st.number_input("Error Tipo B (% del span):", value=0.25, format="%.3f", 
+                                    help="Porcentaje del span (rango completo)")
+            error_c = st.number_input("Error Tipo C (% del valor medido):", value=1.0, format="%.3f", 
+                                    help="Porcentaje del valor que se está midiendo")
+            error_d = st.number_input("Error Tipo D (valor fijo):", value=0.1, format="%.3f", 
+                                    help="Valor fijo según la variable (°C, bar, etc.)")
         
-        if st.button("🧮 Calcular Errores"):
-            error_percentages = {'A': error_a, 'B': error_b, 'C': error_c, 'D': error_d}
-            result = calculate_measurement_errors(selected_instrument, measurement_val, error_percentages)
+        if st.button("🧮 Calcular Errores") and max_range > min_range:
+            span = max_range - min_range
             
-            if result:
-                errors, specs = result
-                
-                st.subheader("📊 Resultados del Análisis de Errores")
-                
-                # Crear tabla de resultados
-                error_data = {
-                    'Tipo de Error': ['A - % del máximo', 'B - % del span', 'C - % del valor medido', 'D - Valor fijo'],
-                    'Descripción': [
-                        ERROR_TYPES['A'],
-                        ERROR_TYPES['B'], 
-                        ERROR_TYPES['C'],
-                        ERROR_TYPES['D']
-                    ],
-                    'Error Calculado': [
-                        f"±{errors['A']:.3f}",
-                        f"±{errors['B']:.3f}",
-                        f"±{errors['C']:.3f}",
-                        f"±{errors['D']:.3f}"
-                    ]
-                }
-                
-                df_errors = pd.DataFrame(error_data)
-                st.dataframe(df_errors, use_container_width=True)
-                
-                # Mostrar el error más crítico
-                max_error = max(errors.values())
-                max_error_type = [k for k, v in errors.items() if v == max_error][0]
-                
-                st.warning(f"⚠️ **Error más crítico:** Tipo {max_error_type} con ±{max_error:.3f} unidades")
-                
-                # Verificar si la medición está en el rango óptimo (50% del campo)
-                range_match = re.search(r'(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)', specs['rango_tipico'])
-                if range_match:
-                    min_range, max_range = float(range_match.group(1)), float(range_match.group(2))
-                    optimal_point = (max_range - min_range) * 0.5 + min_range
-                    deviation_from_optimal = abs(measurement_val - optimal_point) / optimal_point * 100
-                    
-                    if deviation_from_optimal <= 20:
-                        st.success(f"✅ **Medición óptima:** El valor está cerca del 50% del rango (desviación: {deviation_from_optimal:.1f}%)")
-                    else:
-                        st.warning(f"⚠️ **Medición subóptima:** El valor se desvía {deviation_from_optimal:.1f}% del punto óptimo ({optimal_point:.1f})")
+            # Calculate errors
+            errors = {}
+            errors['A'] = (error_a / 100) * max_range
+            errors['B'] = (error_b / 100) * span
+            errors['C'] = (error_c / 100) * measurement_val
+            errors['D'] = error_d
+            
+            st.subheader("📊 Resultados del Análisis de Errores")
+            
+            # Display instrument info
+            if instrument_source == "Base de datos":
+                st.info(f"**Instrumento:** {selected_instrument} - {specs['variable']} {specs['funcion']}")
+            else:
+                st.info(f"**Instrumento personalizado:** {custom_variable} {custom_function}")
+            
+            st.write(f"**Campo de indicación:** {min_range:.2f} a {max_range:.2f}")
+            st.write(f"**Span:** {span:.2f}")
+            st.write(f"**Valor a medir:** {measurement_val:.2f}")
+            
+            # Create results table
+            error_data = {
+                'Tipo de Error': ['A - % del máximo', 'B - % del span', 'C - % del valor medido', 'D - Valor fijo'],
+                'Descripción': [
+                    ERROR_TYPES['A'],
+                    ERROR_TYPES['B'], 
+                    ERROR_TYPES['C'],
+                    ERROR_TYPES['D']
+                ],
+                'Configuración': [
+                    f"±{error_a}% de {max_range:.2f}",
+                    f"±{error_b}% de {span:.2f}",
+                    f"±{error_c}% de {measurement_val:.2f}",
+                    f"±{error_d:.3f} (fijo)"
+                ],
+                'Error Calculado': [
+                    f"±{errors['A']:.3f}",
+                    f"±{errors['B']:.3f}",
+                    f"±{errors['C']:.3f}",
+                    f"±{errors['D']:.3f}"
+                ]
+            }
+            
+            df_errors = pd.DataFrame(error_data)
+            st.dataframe(df_errors, use_container_width=True)
+            
+            # Show most critical error
+            max_error = max(errors.values())
+            max_error_type = [k for k, v in errors.items() if v == max_error][0]
+            
+            st.warning(f"⚠️ **Error más crítico:** Tipo {max_error_type} con ±{max_error:.3f} unidades")
+            
+            # Show measurement assessment
+            measurement_percentage = ((measurement_val - min_range) / span) * 100
+            if 40 <= measurement_percentage <= 60:
+                st.success(f"✅ **Medición óptima:** El valor está en el {measurement_percentage:.1f}% del campo (zona de máxima exactitud)")
+            else:
+                optimal_value = min_range + (span * 0.5)
+                st.warning(f"⚠️ **Recomendación:** Para máxima exactitud, mida cerca de {optimal_value:.2f} (50% del campo)")
 
     with st.expander("**📚 Guía de Tipos de Error**"):
         st.markdown("""
@@ -753,6 +822,98 @@ with tab5:
         - El error tipo C es más favorable para mediciones de valores altos
         - Los errores tipo A y B son constantes en todo el rango
         """)
+
+with tab3:
+    st.header("🧠 Centro de Práctica y Autoevaluación")
+    st.info("Pon a prueba tus conocimientos con ejercicios generados aleatoriamente. ¡Nunca verás dos veces el mismo problema!")
+    
+    quiz_type = st.radio("Elige qué tema quieres practicar:", [
+        "Ejercicios de Escalamiento", 
+        "Identificación de Tags (ISA-5.1)",
+        "Selección de Instrumentos y Análisis de Errores"
+    ], horizontal=True)
+
+    if 'current_quiz_type' not in st.session_state:
+        st.session_state.current_quiz_type = quiz_type
+    if 'quiz_counter' not in st.session_state:
+        st.session_state.quiz_counter = 0
+    if 'quiz_stats' not in st.session_state:
+        st.session_state.quiz_stats = {'correct': 0, 'total': 0}
+    if 'current_question_data' not in st.session_state:
+        st.session_state.current_question_data = None
+    if 'answer_submitted' not in st.session_state:
+        st.session_state.answer_submitted = False
+    
+    # Reset if quiz type changed
+    if st.session_state.current_quiz_type != quiz_type:
+        st.session_state.current_quiz_type = quiz_type
+        st.session_state.current_question_data = None
+        st.session_state.answer_submitted = False
+        st.session_state.quiz_counter += 1
+    
+    # Show statistics
+    if st.session_state.quiz_stats['total'] > 0:
+        accuracy = (st.session_state.quiz_stats['correct'] / st.session_state.quiz_stats['total']) * 100
+        st.metric("📈 Tu Rendimiento General", f"{accuracy:.1f}%", 
+                 delta=f"{st.session_state.quiz_stats['correct']} de {st.session_state.quiz_stats['total']} correctas")
+    st.divider()
+
+    # Generate question if needed
+    if st.session_state.current_question_data is None:
+        if "Escalamiento" in quiz_type:
+            st.session_state.current_question_data = generate_scaling_quiz()
+        elif "Tags" in quiz_type:
+            st.session_state.current_question_data = generate_tag_quiz()
+        elif "Selección de Instrumentos" in quiz_type:
+            result = generate_error_quiz()
+            if result[0] is not None:
+                st.session_state.current_question_data = result
+            else:
+                st.error("No se pudo generar el ejercicio. Intente de nuevo.")
+                st.session_state.current_question_data = None
+
+    # Display question
+    if st.session_state.current_question_data:
+        if "Escalamiento" in quiz_type:
+            st.subheader("📐 Problema de Escalamiento")
+            question, options, correct_answer = st.session_state.current_question_data
+        elif "Tags" in quiz_type:
+            st.subheader("🏷️ Problema de Identificación ISA-5.1")
+            question, options, correct_answer = st.session_state.current_question_data
+        elif "Selección de Instrumentos" in quiz_type:
+            st.subheader("⚠️ Problema de Selección de Instrumentos y Errores")
+            question, options, correct_answer, instrument_tag, measurement_value = st.session_state.current_question_data
+        
+        if options:
+            unique_key = f"quiz_answer_{st.session_state.quiz_counter}_{quiz_type.replace(' ', '_')}"
+            user_answer = st.radio(f"**Problema:** {question}", options, key=unique_key)
+            
+            col_btn1, col_btn2, col_btn3 = st.columns([1,1,2])
+            
+            if col_btn1.button("✅ Verificar Respuesta", key=f"verify_{st.session_state.quiz_counter}"):
+                if not st.session_state.answer_submitted:
+                    st.session_state.quiz_stats['total'] += 1
+                    st.session_state.answer_submitted = True
+                    
+                    if user_answer == correct_answer:
+                        st.session_state.quiz_stats['correct'] += 1
+                        st.markdown('<div class="success-box">🎉 ¡Correcto! Excelente trabajo.</div>', unsafe_allow_html=True)
+                        
+                        # Show additional info for error exercises
+                        if "Selección de Instrumentos" in quiz_type and 'instrument_tag' in locals():
+                            if instrument_tag and instrument_tag in INSTRUMENT_DATABASE:
+                                specs = INSTRUMENT_DATABASE[instrument_tag]
+                                st.info(f"**Información del instrumento seleccionado:**\n- Rango: {specs['rango_tipico']}\n- Exactitud: {specs['exactitud_tipica']}")
+                    else:
+                        st.markdown(f'<div class="error-box">❌ Incorrecto. La respuesta correcta es: **{correct_answer}**</div>', unsafe_allow_html=True)
+                else:
+                    st.info("Ya has verificado esta respuesta. Genera un nuevo ejercicio.")
+                    
+            if col_btn2.button("➡️ Siguiente Ejercicio", key=f"next_{st.session_state.quiz_counter}"):
+                st.session_state.current_question_data = None
+                st.session_state.answer_submitted = False
+                st.session_state.quiz_counter += 1
+                st.rerun()
 
 st.divider()
 st.markdown("""
